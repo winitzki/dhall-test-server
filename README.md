@@ -20,7 +20,7 @@ The [Dhall language](https://dhall-lang.org) has standard tests that depend on t
 - `https://test.dhall-lang.org/cors/AllowedAll.dhall`
 - `https://test.dhall-lang.org/cors/Empty.dhall`
 - `https://test.dhall-lang.org/cors/NoCORS.dhall`
-- `https://test.dhall-lang.org/cors/Null.dhall`
+- `https://test.dhall-lang.org/cors/Null.dhall` - must return 42
 - `https://test.dhall-lang.org/cors/OnlyGithub.dhall`
 - `https://test.dhall-lang.org/cors/OnlyOther.dhall`
 - `https://test.dhall-lang.org/cors/OnlySelf.dhall`

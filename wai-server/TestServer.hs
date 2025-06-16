@@ -20,6 +20,11 @@ import Data.Char (isAlphaNum)
 alphanumericChars :: [Char]
 alphanumericChars = filter isAlphaNum ['!'..'~']
 
+-- | Fixed ByteString response for the /xyz endpoint.
+-- This is now a top-level static definition.
+fixedXYZResponse :: ByteString
+fixedXYZResponse = "1234"
+
 -- | Generates a random alphanumeric string of a given length.
 generateRandomAlphanumericString :: Int -> IO T.Text
 generateRandomAlphanumericString len = do
@@ -146,16 +151,29 @@ app req respond = do
                     respond $ responseLBS status405 [(hContentType, "text/plain")]
                               "405 Method Not Allowed: Only GET method is supported for /bar."
 
-    else if path == ["nonexistent-file.dhall"] -- Endpoint for a specific 404
+    else if path == ["nonexistent-file.dhall"]
         then do
             -- Endpoint: /nonexistent-file.dhall
             -- Always returns 404 Not Found, regardless of method or headers, with a specific message.
             respond $ responseLBS status404 [(hContentType, "text/plain")] "404 Not Found"
 
+    else if path == ["xyz"]
+        then do
+            -- Endpoint: /xyz
+            -- Returns a fixed ByteString value "1234" as plain text.
+            if method == methodGet -- Check if the method is GET
+                then do
+                    -- Use the statically defined fixedXYZResponse
+                    respond $ responseLBS status200 [(hContentType, "text/plain")] fixedXYZResponse
+                else do
+                    -- If method is not GET, return 405 Method Not Allowed
+                    respond $ responseLBS status405 [(hContentType, "text/plain")]
+                              "405 Method Not Allowed: Only GET method is supported for /xyz."
+
     else do
         -- For any other path, respond with a general 404 Not Found.
         respond $ responseLBS status404 [(hContentType, "text/plain")]
-                  "404 Not Found: Supported endpoints are /headers, /user-agent, /random-string, /foo, /bar, and /nonexistent-file.dhall."
+                  "404 Not Found: Supported endpoints are /headers, /user-agent, /random-string, /foo, /bar, /nonexistent-file.dhall, and /xyz."
 
 -- | Main function to run the Warp server.
 -- It will listen on port 8080.
@@ -168,4 +186,5 @@ main = do
     putStrLn "Access /foo (GET only, requires 'Test' header) at: http://localhost:8080/foo"
     putStrLn "Access /bar (GET only, requires 'Test' header) at: http://localhost:8080/bar"
     putStrLn "Access /nonexistent-file.dhall (always 404) at: http://localhost:8080/nonexistent-file.dhall"
+    putStrLn "Access /xyz (GET only) at: http://localhost:8080/xyz"
     run 8080 app
