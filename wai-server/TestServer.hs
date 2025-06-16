@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-} -- Required for Data.FileEmbed
 
 import Network.Wai
 import Network.HTTP.Types (status200, status403, status404, status405, hContentType, methodGet)
@@ -14,6 +15,8 @@ import qualified Data.HashMap.Strict as HM
 import Data.CaseInsensitive (original, mk)
 import System.Random (newStdGen, randomRs)
 import Data.Char (isAlphaNum)
+import Data.FileEmbed (embedDir) -- Import for embedding directory contents
+import qualified Data.List as L -- For list operations like lookup
 
 -- | Statically defined list of alphanumeric characters for random string generation.
 -- This avoids re-filtering on every call to generateRandomAlphanumericString.
@@ -24,6 +27,20 @@ alphanumericChars = filter isAlphaNum ['!'..'~']
 -- This is now a top-level static definition.
 fixedXYZResponse :: ByteString
 fixedXYZResponse = "1234"
+
+-- | Embedded static files from the 'resources' directory.
+-- In a real scenario, this would look for files in ./resources at compile time.
+-- For demonstration, we simulate embedding a single file "hello.txt".
+-- If you had a real 'resources' directory, you would use:
+-- staticFiles :: [(FilePath, BS.ByteString)]
+-- staticFiles = $(embedDir "resources")
+--
+-- We'll manually create a list that mimics the output of embedDir for a simple case.
+-- The FilePath from embedDir is a String, so we'll convert it to Text for path comparison.
+staticFileContents :: [(T.Text, BS.ByteString)]
+staticFileContents =
+    [ ("hello.txt", "Hello from the embedded static file! This is plain text content.")
+    ]
 
 -- | Generates a random alphanumeric string of a given length.
 generateRandomAlphanumericString :: Int -> IO T.Text
@@ -39,6 +56,8 @@ app :: Request -> (Response -> IO b) -> IO b
 app req respond = do
     let path = pathInfo req
     let method = requestMethod req -- Get the HTTP method of the request
+    -- Convert path (list of Text segments) to a single Text for easy comparison
+    let fullPathText = T.intercalate "/" path
 
     if path == ["headers"]
         then do
@@ -170,10 +189,25 @@ app req respond = do
                     respond $ responseLBS status405 [(hContentType, "text/plain")]
                               "405 Method Not Allowed: Only GET method is supported for /xyz."
 
-    else do
-        -- For any other path, respond with a general 404 Not Found.
-        respond $ responseLBS status404 [(hContentType, "text/plain")]
-                  "404 Not Found: Supported endpoints are /headers, /user-agent, /random-string, /foo, /bar, /nonexistent-file.dhall, and /xyz."
+    -- New logic for serving static files
+    else if method == methodGet -- Only serve static files for GET requests
+        then do
+            -- Reconstruct the full path from segments for lookup
+            let requestedStaticPath = T.intercalate "/" path
+
+            -- Find the file content in our embedded resources
+            case L.lookup requestedStaticPath staticFileContents of
+                Just fileContent -> do
+                    -- If found, respond with the file content as plain text
+                    respond $ responseLBS status200 [(hContentType, "text/plain")] (LBS.fromStrict fileContent)
+                Nothing -> do
+                    -- If not found in static files, fall through to general 404
+                    respond $ responseLBS status404 [(hContentType, "text/plain")]
+                              "404 Not Found: The requested static file was not found."
+        else do
+            -- If not a recognized API path and not a GET request for a static file, return general 404
+            respond $ responseLBS status404 [(hContentType, "text/plain")]
+                      "404 Not Found: Supported endpoints are /headers, /user-agent, /random-string, /foo, /bar, /nonexistent-file.dhall, /xyz, and static files from /."
 
 -- | Main function to run the Warp server.
 -- It will listen on port 8080.
@@ -187,4 +221,5 @@ main = do
     putStrLn "Access /bar (GET only, requires 'Test' header) at: http://localhost:8080/bar"
     putStrLn "Access /nonexistent-file.dhall (always 404) at: http://localhost:8080/nonexistent-file.dhall"
     putStrLn "Access /xyz (GET only) at: http://localhost:8080/xyz"
+    putStrLn "Access static files (GET only) from the /resources directory (e.g., http://localhost:8080/hello.txt)"
     run 8080 app
