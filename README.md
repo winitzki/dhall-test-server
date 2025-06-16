@@ -5,8 +5,10 @@ That dependence has been a bottleneck for PR running and even for local developm
 
 For instance, I have observed that `httpbin.org`, `tests.dhall-lang.org`, or `prelude.dhall-lang.org` sometimes gets overloaded with requests and becomes unavailable.
 This leads to test failures in CI or on the local machine, although there is no fault in the code.
+Especially, `httpbin.org` regularly responds with `503 Service Temporarily Unavailable`.
 
 This project will implement a local web server that responds to all endpoints needed by the Dhall tests.
+Eventually, this code might be merged into one of the dhall repositories.
 
 The [Dhall language](https://dhall-lang.org) has standard tests that depend on the following Web URLs:
 
@@ -14,7 +16,7 @@ The [Dhall language](https://dhall-lang.org) has standard tests that depend on t
 - `https://test.dhall-lang.org/foo`  - must return 403 unless the `Test` header is given with arbitrary value, and if so, returns `./bar`
 - `https://test.dhall-lang.org/bar` - must return 403 unless the `Test` header is given with arbitrary value, and if so, returns `True`
 - `https://test.dhall-lang.org/foo/../random-string`  - must return the same as /random-string
-- `https://test.dhall-lang.org/nonexistent-file.dhall` - must return 404 status
+- `https://test.dhall-lang.org/nonexistent-file.dhall` - must return 404 status with text "404: Not Found"
 - `https://test.dhall-lang.org/cors/AllowedAll.dhall`
 - `https://test.dhall-lang.org/cors/Empty.dhall`
 - `https://test.dhall-lang.org/cors/NoCORS.dhall`
