@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import Network.Wai
-import Network.HTTP.Types (status200, status404, status405, hContentType, methodGet) -- Import status405 and methodGet
+import Network.HTTP.Types (status200, status404, status405, hContentType, methodGet)
 import Network.Wai.Handler.Warp (run)
 import Data.Aeson (encode, object, (.=), ToJSON(toJSON))
 import Data.ByteString.Lazy (ByteString)
@@ -19,10 +19,11 @@ app req respond = do
     let path = pathInfo req
     let method = requestMethod req -- Get the HTTP method of the request
 
-    if path == ["get_headers"]
+    if path == ["headers"] -- Changed from "get_headers"
         then do
-            -- Endpoint: /get_headers
+            -- Endpoint: /headers
             -- Extracts all request headers and returns them as JSON.
+            -- The response will be in the format { "headers" : { "Host": "value", ... } }
             if method == methodGet -- Check if the method is GET
                 then do
                     let reqHeaders = requestHeaders req
@@ -32,17 +33,19 @@ app req respond = do
                                                         (TE.decodeUtf8 (original key), TE.decodeUtf8 value))
                                                   reqHeaders
 
-                    let jsonResponse = encode $ toJSON headersMap
+                    -- Wrap the headers map inside an object with a "headers" key
+                    let jsonResponse = encode $ object ["headers" .= headersMap]
                     respond $ responseLBS status200 [(hContentType, "application/json")] jsonResponse
                 else do
                     -- If method is not GET, return 405 Method Not Allowed
                     respond $ responseLBS status405 [(hContentType, "text/plain")]
-                              "405 Method Not Allowed: Only GET method is supported for /get_headers."
+                              "405 Method Not Allowed: Only GET method is supported for /headers."
 
-    else if path == ["get-user-agent"]
+    else if path == ["user-agent"] -- Changed from "get-user-agent"
         then do
-            -- Endpoint: /get-user-agent
+            -- Endpoint: /user-agent
             -- Extracts only the User-Agent header and returns it as JSON.
+            -- The response will be in the format { "user-agent" : "value" }
             if method == methodGet -- Check if the method is GET
                 then do
                     let reqHeaders = requestHeaders req
@@ -55,23 +58,24 @@ app req respond = do
                                            Just val -> TE.decodeUtf8 val
                                            Nothing  -> ""
 
-                    let jsonResponse = encode $ object ["User-Agent" .= userAgentValue]
+                    -- Use "user-agent" (lowercase) as the key
+                    let jsonResponse = encode $ object ["user-agent" .= userAgentValue]
                     respond $ responseLBS status200 [(hContentType, "application/json")] jsonResponse
                 else do
                     -- If method is not GET, return 405 Method Not Allowed
                     respond $ responseLBS status405 [(hContentType, "text/plain")]
-                              "405 Method Not Allowed: Only GET method is supported for /get-user-agent."
+                              "405 Method Not Allowed: Only GET method is supported for /user-agent."
 
     else do
         -- For any other path, respond with a 404 Not Found.
         respond $ responseLBS status404 [(hContentType, "text/plain")]
-                  "404 Not Found: Supported endpoints are /get_headers and /get-user-agent."
+                  "404 Not Found: Supported endpoints are /headers and /user-agent."
 
 -- | Main function to run the Warp server.
--- It will listen on port 3000.
+-- It will listen on port 8080.
 main :: IO ()
 main = do
-    putStrLn "Listening on http://localhost:3000/"
-    putStrLn "Access all headers (GET only) at: http://localhost:3000/get_headers"
-    putStrLn "Access User-Agent header (GET only) at: http://localhost:3000/get-user-agent"
-    run 3000 app
+    putStrLn "Listening on http://localhost:8080/"
+    putStrLn "Access all headers (GET only) at: http://localhost:8080/headers"
+    putStrLn "Access User-Agent header (GET only) at: http://localhost:8080/user-agent"
+    run 8080 app
