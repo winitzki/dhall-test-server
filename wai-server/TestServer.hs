@@ -37,6 +37,7 @@ fixedXYZResponse = "1234"
 --
 -- We'll manually create a list that mimics the output of embedDir for a simple case.
 -- The FilePath from embedDir is a String, so we'll convert it to Text for path comparison.
+-- The paths here are relative to the 'resources' directory itself.
 staticFileContents :: [(T.Text, BS.ByteString)]
 staticFileContents =
     [ ("hello.txt", "Hello from the embedded static file! This is plain text content.")
@@ -56,8 +57,6 @@ app :: Request -> (Response -> IO b) -> IO b
 app req respond = do
     let path = pathInfo req
     let method = requestMethod req -- Get the HTTP method of the request
-    -- Convert path (list of Text segments) to a single Text for easy comparison
-    let fullPathText = T.intercalate "/" path
 
     if path == ["headers"]
         then do
@@ -189,11 +188,12 @@ app req respond = do
                     respond $ responseLBS status405 [(hContentType, "text/plain")]
                               "405 Method Not Allowed: Only GET method is supported for /xyz."
 
-    -- New logic for serving static files
-    else if method == methodGet -- Only serve static files for GET requests
+    -- New logic for serving static files under the /static/ prefix
+    else if method == methodGet && (not (null path) && head path == "static")
         then do
-            -- Reconstruct the full path from segments for lookup
-            let requestedStaticPath = T.intercalate "/" path
+            -- Extract the path relative to the 'static' prefix
+            let staticFilePathSegments = tail path
+            let requestedStaticPath = T.intercalate "/" staticFilePathSegments
 
             -- Find the file content in our embedded resources
             case L.lookup requestedStaticPath staticFileContents of
@@ -201,13 +201,13 @@ app req respond = do
                     -- If found, respond with the file content as plain text
                     respond $ responseLBS status200 [(hContentType, "text/plain")] (LBS.fromStrict fileContent)
                 Nothing -> do
-                    -- If not found in static files, fall through to general 404
+                    -- If not found in static files, return a specific 404 for static files
                     respond $ responseLBS status404 [(hContentType, "text/plain")]
-                              "404 Not Found: The requested static file was not found."
+                              "404 Not Found: The requested static file was not found under /static/."
         else do
-            -- If not a recognized API path and not a GET request for a static file, return general 404
+            -- For any other path or non-GET method not handled by specific endpoints, respond with a general 404 Not Found.
             respond $ responseLBS status404 [(hContentType, "text/plain")]
-                      "404 Not Found: Supported endpoints are /headers, /user-agent, /random-string, /foo, /bar, /nonexistent-file.dhall, /xyz, and static files from /."
+                      "404 Not Found: Supported endpoints are /headers, /user-agent, /random-string, /foo, /bar, /nonexistent-file.dhall, /xyz, and static files under /static/."
 
 -- | Main function to run the Warp server.
 -- It will listen on port 8080.
@@ -221,5 +221,5 @@ main = do
     putStrLn "Access /bar (GET only, requires 'Test' header) at: http://localhost:8080/bar"
     putStrLn "Access /nonexistent-file.dhall (always 404) at: http://localhost:8080/nonexistent-file.dhall"
     putStrLn "Access /xyz (GET only) at: http://localhost:8080/xyz"
-    putStrLn "Access static files (GET only) from the /resources directory (e.g., http://localhost:8080/hello.txt)"
+    putStrLn "Access static files (GET only) from the /resources directory via /static/ (e.g., http://localhost:8080/static/hello.txt)"
     run 8080 app
