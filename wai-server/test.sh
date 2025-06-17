@@ -36,7 +36,7 @@ trap cleanup EXIT
 # --- Build the Haskell executable using Cabal ---
 echo "--- Building Haskell server with Cabal ---"
 # Ensure cabal is up to date and dependencies are installed
-cabal update
+# cabal update # Removed as requested
 cabal build ${EXECUTABLE_NAME} --ghc-options=-dynamic --with-compiler=/Users/user/.ghcup/bin/ghc-9.8.4 # Builds the executable target defined in your .cabal file
 if [ $? -ne 0 ]; then
     echo "Haskell build failed!"
@@ -74,11 +74,19 @@ test_endpoint() {
 
     echo -n "Testing ${url} (Expected: ${expected_status} ${expected_body_regex:-<any>})... "
 
-    # Capture both status code and response body
-    # Removed quotes around ${headers} to allow shell word splitting for multiple header arguments
-    HTTP_RESPONSE=$(curl -s -X GET -w "%{http_code}\n%{raw_output}" ${headers} "${url}")
-    HTTP_STATUS=$(echo "${HTTP_RESPONSE}" | head -n 1)
-    HTTP_BODY=$(echo "${HTTP_RESPONSE}" | tail -n +2)
+    if [[ -z "$headers" ]]; then
+      headers="X-Dummy-Header: dummy"
+    fi  
+
+    # Capture both response body and status code in a single curl request,
+    # with the status code appended, separated by an underscore.
+    HTTP_FULL_OUTPUT=$(curl -s -X GET -w "_%{http_code}_" -H "${headers}" "${url}")
+
+    # Extract HTTP status code using sed: find the last _ followed by 3 digits at the end, capture digits.
+    HTTP_STATUS=$(echo "${HTTP_FULL_OUTPUT}" | sed -n 's/.*_\([0-9]\{3\}\)_$/\1/p')
+
+    # Extract HTTP body using sed: remove the last _ and 3 digits from the end.
+    HTTP_BODY=$(echo "${HTTP_FULL_OUTPUT}" | sed 's/_[0-9]\{3\}_$//')
 
     if [ "${HTTP_STATUS}" -eq "${expected_status}" ]; then
         if [[ "${HTTP_BODY}" =~ ${expected_body_regex} ]]; then
@@ -98,15 +106,17 @@ test_endpoint() {
 test_endpoint "${BASE_URL}/headers" 200 '\{"headers":\{.*"Accept":"\*\/\*",.*"Host":"localhost:8080",.*"User-Agent":"curl\/[0-9\.]+".*\}\}'
 
 # 2. /user-agent
-test_endpoint "${BASE_URL}/user-agent" 200 '"user-agent":'
+# Added a specific User-Agent header and updated the regex to match it.
+test_endpoint "${BASE_URL}/user-agent" 200 '"user-agent":"asdf"' "User-Agent: asdf"
 
 # 3. /random-string
 # Verify length is 32 alphanumeric chars.
 TOTAL_TESTS=$((TOTAL_TESTS + 1))
 echo -n "Testing ${BASE_URL}/random-string (Expected: 200, 32 alphanumeric chars)... "
-RANDOM_STR_RESPONSE=$(curl -s -X GET -w "%{http_code}\n%{raw_output}" "${BASE_URL}/random-string")
-RANDOM_STR_STATUS=$(echo "${RANDOM_STR_RESPONSE}" | head -n 1)
-RANDOM_STR_BODY=$(echo "${RANDOM_STR_RESPONSE}" | tail -n +2)
+# Use the same single curl and sed parsing for random-string
+RANDOM_STR_FULL_OUTPUT=$(curl -s -X GET -w "_%{http_code}" "${BASE_URL}/random-string")
+RANDOM_STR_STATUS=$(echo "${RANDOM_STR_FULL_OUTPUT}" | sed -n 's/.*_\([0-9]\{3\}\)$/\1/p')
+RANDOM_STR_BODY=$(echo "${RANDOM_STR_FULL_OUTPUT}" | sed 's/_[0-9]\{3\}$//')
 
 if [ "${RANDOM_STR_STATUS}" -eq 200 ]; then
     if [[ "${#RANDOM_STR_BODY}" -eq 32 && "${RANDOM_STR_BODY}" =~ ^[a-zA-Z0-9]+$ ]]; then
@@ -123,13 +133,13 @@ fi
 test_endpoint "${BASE_URL}/foo" 403 "403 Forbidden: 'Test' header is required."
 
 # 5. /foo (with header)
-test_endpoint "${BASE_URL}/foo" 200 "\./bar" "-H \"Test: arbitrary-value\""
+test_endpoint "${BASE_URL}/foo" 200 "\./bar" "Test: arbitrary-value"
 
 # 6. /bar (without header)
 test_endpoint "${BASE_URL}/bar" 403 "403 Forbidden: 'Test' header is required."
 
 # 7. /bar (with header)
-test_endpoint "${BASE_URL}/bar" 200 "True" "-H \"Test: some-other-value\""
+test_endpoint "${BASE_URL}/bar" 200 "True"  "Test: some-other-value"
 
 # 8. /nonexistent-file.dhall
 test_endpoint "${BASE_URL}/nonexistent-file.dhall" 404 "404 Not Found"
